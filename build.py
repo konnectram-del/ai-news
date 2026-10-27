@@ -1,5 +1,5 @@
 """Fetch AI news feeds and render a static site to docs/index.html."""
-import html, re, sys, urllib.request
+import html, json, os, re, sys, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -85,6 +85,7 @@ CHANNELS = {
         "3Blue1Brown": "@3blue1brown",
     },
 }
+API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 
@@ -110,29 +111,46 @@ def channel_id(ref):
     return None
 
 
+def rss_uploads(cid):
+    feed = feedparser.parse(http_get(f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"))
+    for e in feed.entries:
+        ts = e.get("published_parsed")
+        if ts:
+            yield e.get("yt_videoid", ""), clean(e.get("title")), datetime(*ts[:6], tzinfo=timezone.utc)
+
+
+def api_uploads(cid):
+    """Official YouTube Data API: a channel's uploads playlist is the channel ID with UC -> UU. Costs 1 quota unit."""
+    url = ("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&maxResults=6"
+           f"&playlistId=UU{cid[2:]}&key={API_KEY}")
+    for item in json.loads(urllib.request.urlopen(url, timeout=20).read()).get("items", []):
+        d, sn = item.get("contentDetails", {}), item.get("snippet", {})
+        if d.get("videoPublishedAt") and sn.get("title") not in ("Private video", "Deleted video"):
+            yield d.get("videoId", ""), clean(sn["title"]), datetime.fromisoformat(d["videoPublishedAt"].replace("Z", "+00:00"))
+
+
 def fetch_videos(per_channel=2):
     vids = []
+    if not API_KEY:
+        print("YOUTUBE_API_KEY not set; falling back to RSS (often blocked from GitHub)", file=sys.stderr)
     for lang, chans in CHANNELS.items():
         for name, ref in chans.items():
             cid = channel_id(ref)
             if not cid:
                 print(f"could not resolve {name} ({ref})", file=sys.stderr)
                 continue
-            try:
-                feed = feedparser.parse(http_get(f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"))
-            except Exception as exc:
-                print(f"feed error for {name} ({cid}): {exc}", file=sys.stderr)
-                continue
             n = 0
-            for e in feed.entries:
-                vid, ts = e.get("yt_videoid", ""), e.get("published_parsed")
-                if not re.fullmatch(r"[\w-]{11}", vid) or not ts:
-                    continue
-                when = datetime(*ts[:6], tzinfo=timezone.utc).astimezone(TZ)
-                vids.append(dict(id=vid, title=clean(e.get("title")), channel=name, lang=lang, when=when))
-                n += 1
-                if n >= per_channel:
-                    break
+            try:
+                for vid, title, when in (api_uploads if API_KEY else rss_uploads)(cid):
+                    if not re.fullmatch(r"[\w-]{11}", vid):
+                        continue
+                    vids.append(dict(id=vid, title=title, channel=name, lang=lang, when=when.astimezone(TZ)))
+                    n += 1
+                    if n >= per_channel:
+                        break
+            except Exception as exc:
+                print(f"video error for {name} ({cid}): {exc}", file=sys.stderr)
+                continue
             if not n:
                 print(f"no videos from {name}", file=sys.stderr)
     vids.sort(key=lambda v: v["when"], reverse=True)
