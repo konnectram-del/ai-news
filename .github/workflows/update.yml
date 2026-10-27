@@ -1,7 +1,7 @@
 name: Update AI news
 on:
   schedule:
-    - cron: "0 11,23 * * *"
+    - cron: "0 11,23 * * *"   # 11:00 and 23:00 UTC (7 AM / 7 PM Toronto in summer, 6 AM / 6 PM in winter)
   workflow_dispatch:
   push:
     branches: [main]
@@ -26,6 +26,8 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python build.py
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
