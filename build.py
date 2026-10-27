@@ -166,7 +166,7 @@ def watch_html(videos, limit=6):
     out = []
     for lang in langs:
         group = [v for v in videos if v["lang"] == lang][:limit]
-        title = "Watch" if len(langs) == 1 else f"Watch: {lang}"
+        title = "AI videos from top influencers" if len(langs) == 1 else f"AI videos from top influencers: {lang}"
         tiles = "".join(
             f'<a class="vid" href="https://www.youtube.com/watch?v={v["id"]}" data-id="{v["id"]}" rel="noopener">'
             f'<span class="media"><img src="https://i.ytimg.com/vi/{v["id"]}/hqdefault.jpg" alt="" loading="lazy" decoding="async" '
@@ -259,7 +259,7 @@ def write_seo_files(out):
 
 def img_tag(it):
     if not it["image"]:
-        return ""
+        return f'<span class="ph" aria-hidden="true">{html.escape(it["source"][:1].upper())}</span>'
     return (f'<img src="{html.escape(it["image"])}" alt="" loading="lazy" decoding="async" '
             f'referrerpolicy="no-referrer" onerror="this.remove()">')
 
@@ -307,7 +307,8 @@ def render(items, videos=(), summary=""):
                 body.append("</ol></section>")
             day = d
             body.append(f'<section><h2>{day_label(d, today)}</h2><ol>')
-        body.append(f'<li>{meta(it)}<div><a class="t" href="{esc(it["link"])}" rel="noopener">{esc(it["title"])}</a>'
+        body.append(f'<li><a class="media" href="{esc(it["link"])}" rel="noopener" tabindex="-1" aria-hidden="true">{img_tag(it)}</a>'
+                    f'<div class="body">{meta(it)}<a class="t" href="{esc(it["link"])}" rel="noopener">{esc(it["title"])}</a>'
                     + (f'<p>{esc(it["summary"])}</p>' if it["summary"] else "") + "</div></li>")
     if day:
         body.append("</ol></section>")
@@ -320,11 +321,17 @@ def render(items, videos=(), summary=""):
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10141c" media="(prefers-color-scheme: dark)">
 {{HEAD}}
 <style>
 :root{--bg:#f3f5f8;--card:#fff;--ink:#141a24;--mute:#5a6578;--line:#d5dbe5;--link:#1f3fd6;--ph:#dfe4ec;color-scheme:light}
 @media(prefers-color-scheme:dark){:root{--bg:#10141c;--card:#171d29;--ink:#e8ecf3;--mute:#93a0b6;--line:#2a3344;--link:#8da2ff;--ph:#232b3a;color-scheme:dark}}
 *{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+img,iframe{max-width:100%}
+.t,p{overflow-wrap:anywhere}
+.hero>*,.grid>*,.vgrid>*,li>*{min-width:0}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 main{max-width:1040px;margin:0 auto;padding:48px 20px 80px}
 header{border-bottom:2px solid var(--ink);padding-bottom:20px;margin-bottom:28px}
@@ -361,12 +368,14 @@ h2{font:600 15px/1 system-ui,sans-serif;color:var(--mute);margin:40px 0 4px}
 .digest p{margin:0;max-width:72ch;font:400 18px/1.65 "Iowan Old Style",Palatino,Georgia,serif;color:var(--ink)}
 .digest small{display:block;margin-top:12px;color:var(--mute);font-size:12px}
 ol{list-style:none;margin:0;padding:0}
-li{display:grid;grid-template-columns:170px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}
-li .meta{flex-direction:column;gap:0}
+li{display:grid;grid-template-columns:200px 1fr;gap:18px;padding:16px 0;border-bottom:1px solid var(--line);align-items:start}
+.body{display:flex;flex-direction:column;gap:4px}
+.body p{margin:2px 0 0}
+.ph{display:flex;align-items:center;justify-content:center;height:100%;font:700 28px/1 Georgia,serif;color:var(--mute)}
 section{max-width:780px}
 .empty{margin-top:32px}
-@media(max-width:820px){.hero{grid-template-columns:1fr}.grid,.vgrid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:560px){.grid,.vgrid{grid-template-columns:1fr}li{grid-template-columns:1fr;gap:4px}li .meta{flex-direction:row;gap:10px}}
+@media(max-width:820px){.hero{grid-template-columns:1fr}.grid,.vgrid{grid-template-columns:repeat(2,1fr)}li{grid-template-columns:160px 1fr}}
+@media(max-width:560px){main{padding:28px 16px 56px}header{margin-bottom:20px}.grid,.vgrid{grid-template-columns:1fr}.hero{gap:14px;margin-bottom:28px}.hero .t{font-size:26px}.vid .t{font-size:18px}.digest{padding:16px}.digest p{font-size:17px}li{grid-template-columns:104px 1fr;gap:12px;padding:14px 0}li .t{font-size:17px}li p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px}.ph{font-size:22px}h2{margin-top:32px}}
 </style></head><body><main>
 <header><h1>AI News</h1>
 <p class="status">Updated {{STAMP}}. {{COUNT}} stories from the last few days. Refreshes twice a day.</p></header>
@@ -384,4 +393,5 @@ if __name__ == "__main__":
     out.mkdir(exist_ok=True)
     (out / "index.html").write_text((lambda items: render(items, fetch_videos(), summarize(items)))(fetch()), encoding="utf-8")
     write_seo_files(out)
+    print(f"site url: {SITE_URL} ({'from SITE_URL variable' if os.environ.get('SITE_URL') else 'DEFAULT: SITE_URL variable not received'})", file=sys.stderr)
     print("wrote", out / "index.html")
