@@ -28,6 +28,7 @@ jobs:
       - run: python build.py
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
