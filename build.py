@@ -151,9 +151,9 @@ def fetch_videos(per_channel=2):
             except Exception as exc:
                 print(f"video error for {name} ({cid}): {exc}", file=sys.stderr)
                 continue
-            if not n:
-                print(f"no videos from {name}", file=sys.stderr)
+            print(f"videos: {name} -> {n} via {'API' if API_KEY else 'RSS'}", file=sys.stderr)
     vids.sort(key=lambda v: v["when"], reverse=True)
+    print(f"videos: {len(vids)} total, showing {min(len(vids), 8)}", file=sys.stderr)
     return vids
 
 
