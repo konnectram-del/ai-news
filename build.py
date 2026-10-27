@@ -88,13 +88,16 @@ CHANNELS = {
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 
+def http_get(url):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", "Cookie": "SOCS=CAI"})
+    return urllib.request.urlopen(req, timeout=20).read()
+
+
 def channel_id(ref):
     if ref.startswith("UC"):
         return ref
-    req = urllib.request.Request(f"https://www.youtube.com/{ref}",
-                                 headers={"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9", "Cookie": "SOCS=CAI"})
     try:
-        page = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "ignore")
+        page = http_get(f"https://www.youtube.com/{ref}").decode("utf-8", "ignore")
     except Exception as exc:
         print(f"could not load {ref}: {exc}", file=sys.stderr)
         return None
@@ -115,7 +118,11 @@ def fetch_videos(per_channel=2):
             if not cid:
                 print(f"could not resolve {name} ({ref})", file=sys.stderr)
                 continue
-            feed = feedparser.parse(f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}", agent="ai-news-digest/1.0")
+            try:
+                feed = feedparser.parse(http_get(f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"))
+            except Exception as exc:
+                print(f"feed error for {name} ({cid}): {exc}", file=sys.stderr)
+                continue
             n = 0
             for e in feed.entries:
                 vid, ts = e.get("yt_videoid", ""), e.get("published_parsed")
