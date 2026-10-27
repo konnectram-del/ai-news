@@ -16,6 +16,8 @@ FEEDS = {
 }
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 MODEL = "claude-haiku-5-5"
+SITE_URL = (os.environ.get("SITE_URL") or "https://konnectram-del.github.io/ai-news/").rstrip("/") + "/"
+GA_ID = (os.environ.get("GA_MEASUREMENT_ID") or "").strip()
 TZ = ZoneInfo("America/Toronto")
 MAX_AGE_DAYS, MAX_ITEMS, SUMMARY_CHARS = 4, 80, 200
 
@@ -189,18 +191,70 @@ def summarize(items, n=15):
               "\n\nWrite ONE paragraph of 90 to 130 words, in your own words, telling a busy reader what is happening in AI right now, "
               "leading with the biggest themes. Use only information in the list: do not add facts, numbers or names that are not there. "
               "No quotes, no bullet points, no title, no preamble. Output the paragraph only.")
-    body = json.dumps({"model": MODEL, "max_tokens": 400, "messages": [{"role": "user", "content": prompt}]}).encode()
+    body = json.dumps({"model": MODEL, "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
         "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"})
     try:
         data = json.loads(urllib.request.urlopen(req, timeout=60).read())
         text = " ".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            print(f"summary: empty response (stop_reason={data.get('stop_reason')})", file=sys.stderr)
         print(f"summary: {len(text.split())} words", file=sys.stderr)
         return text
     except Exception as exc:
         print(f"summary error: {exc}", file=sys.stderr)
         return ""
+
+
+TITLE = "AI News Today: Latest AI Headlines & Videos"
+DESC = "A daily AI news digest: the latest AI headlines from leading outlets plus new AI videos, refreshed several times a day."
+FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23141a24'/%3E%3Ctext x='16' y='22' font-size='16' font-family='Georgia,serif' font-weight='700' text-anchor='middle' fill='%23fff'%3EAI%3C/text%3E%3C/svg%3E"
+
+
+def head_html(items):
+    esc = html.escape
+    ld = [
+        {"@context": "https://schema.org", "@type": "WebSite", "name": "AI News", "url": SITE_URL, "description": DESC, "inLanguage": "en"},
+        {"@context": "https://schema.org", "@type": "ItemList", "name": "Latest AI headlines",
+         "itemListElement": [{"@type": "ListItem", "position": n + 1, "url": it["link"], "name": it["title"]}
+                             for n, it in enumerate(items[:10])]},
+    ]
+    ld_json = json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")
+    parts = [
+        f"<title>{esc(TITLE)}</title>",
+        f'<meta name="description" content="{esc(DESC)}">',
+        '<meta name="robots" content="index,follow,max-image-preview:large">',
+        f'<link rel="canonical" href="{esc(SITE_URL)}">',
+        f'<link rel="icon" href="{FAVICON}">',
+        '<meta property="og:type" content="website">',
+        '<meta property="og:site_name" content="AI News">',
+        f'<meta property="og:title" content="{esc(TITLE)}">',
+        f'<meta property="og:description" content="{esc(DESC)}">',
+        f'<meta property="og:url" content="{esc(SITE_URL)}">',
+        '<meta name="twitter:card" content="summary">',
+        f'<meta name="twitter:title" content="{esc(TITLE)}">',
+        f'<meta name="twitter:description" content="{esc(DESC)}">',
+        f'<script type="application/ld+json">{ld_json}</script>',
+    ]
+    if re.fullmatch(r"G-[A-Z0-9]{6,14}", GA_ID):
+        parts.append(f'<script async src="https://www.googletagmanager.com/gtag/js?id={GA_ID}"></script>')
+        parts.append("<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}"
+                     f"gtag('js',new Date());gtag('config','{GA_ID}');</script>")
+    elif GA_ID:
+        print(f"analytics: ignoring invalid GA_MEASUREMENT_ID {GA_ID!r} (expected G-XXXXXXXXXX)", file=sys.stderr)
+    else:
+        print("analytics: GA_MEASUREMENT_ID not set; no tracking added", file=sys.stderr)
+    return "\n".join(parts)
+
+
+def write_seo_files(out):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {SITE_URL}sitemap.xml\n", encoding="utf-8")
+    (out / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"<url><loc>{html.escape(SITE_URL)}</loc><lastmod>{today}</lastmod><changefreq>hourly</changefreq></url></urlset>\n",
+        encoding="utf-8")
 
 
 def img_tag(it):
@@ -260,14 +314,13 @@ def render(items, videos=(), summary=""):
     if not items:
         body.append("<p class='empty'>No stories could be loaded. The next scheduled update will try again.</p>")
     stamp = datetime.now(TZ).strftime("%B %-d, %-I:%M %p %Z")
-    return PAGE.replace("{{STAMP}}", stamp).replace("{{COUNT}}", str(len(items))).replace("{{BODY}}", "\n".join(body))
+    return PAGE.replace("{{HEAD}}", head_html(items)).replace("{{STAMP}}", stamp).replace("{{COUNT}}", str(len(items))).replace("{{BODY}}", "\n".join(body))
 
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AI News</title>
-<meta name="description" content="AI headlines from leading sources, updated twice a day.">
+{{HEAD}}
 <style>
 :root{--bg:#f3f5f8;--card:#fff;--ink:#141a24;--mute:#5a6578;--line:#d5dbe5;--link:#1f3fd6;--ph:#dfe4ec;color-scheme:light}
 @media(prefers-color-scheme:dark){:root{--bg:#10141c;--card:#171d29;--ink:#e8ecf3;--mute:#93a0b6;--line:#2a3344;--link:#8da2ff;--ph:#232b3a;color-scheme:dark}}
@@ -320,7 +373,7 @@ section{max-width:780px}
 {{BODY}}
 <script>
 document.addEventListener("click",function(e){var a=e.target.closest("a.vid");if(!a)return;e.preventDefault();
-var m=a.querySelector(".media");m.innerHTML='<iframe src="https://www.youtube-nocookie.com/embed/'+a.dataset.id+'?autoplay=1" title="Video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+var m=a.querySelector(".media");if(window.gtag)gtag("event","video_play",{video_id:a.dataset.id});m.innerHTML='<iframe src="https://www.youtube-nocookie.com/embed/'+a.dataset.id+'?autoplay=1" title="Video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
 a.classList.remove("vid");a.removeAttribute("href");});
 </script>
 </main></body></html>
@@ -330,4 +383,5 @@ if __name__ == "__main__":
     out = Path(__file__).parent / "docs"
     out.mkdir(exist_ok=True)
     (out / "index.html").write_text((lambda items: render(items, fetch_videos(), summarize(items)))(fetch()), encoding="utf-8")
+    write_seo_files(out)
     print("wrote", out / "index.html")
