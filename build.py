@@ -248,6 +248,17 @@ def summarize(items, n=15):
         return ""
 
 
+# Stock ticker (TradingView ticker-tape widget). Format: (TradingView symbol, label). Edit freely.
+TICKER = [
+    ("NASDAQ:NVDA", "NVIDIA"), ("NASDAQ:MSFT", "Microsoft"), ("NASDAQ:GOOGL", "Alphabet"), ("NASDAQ:META", "Meta"),
+    ("NASDAQ:AMZN", "Amazon"), ("NASDAQ:AAPL", "Apple"), ("NASDAQ:TSLA", "Tesla"), ("NASDAQ:AVGO", "Broadcom"),
+    ("NASDAQ:AMD", "AMD"), ("NYSE:TSM", "TSMC"), ("NYSE:ORCL", "Oracle"), ("NASDAQ:PLTR", "Palantir"),
+    ("NASDAQ:MU", "Micron"), ("NASDAQ:INTC", "Intel"), ("NASDAQ:QCOM", "Qualcomm"), ("NASDAQ:ARM", "Arm"),
+    ("NASDAQ:ASML", "ASML"), ("NYSE:CRM", "Salesforce"), ("NYSE:IBM", "IBM"), ("NYSE:SNOW", "Snowflake"),
+    ("NASDAQ:SMCI", "Super Micro"), ("NASDAQ:CRWV", "CoreWeave"), ("NYSE:DELL", "Dell"), ("NASDAQ:ADBE", "Adobe"),
+    ("NASDAQ:BIDU", "Baidu"), ("NYSE:BABA", "Alibaba"),
+]
+
 TITLE = "AI News Today: Latest AI Headlines & Videos"
 DESC = "A daily AI news digest: the latest AI headlines from leading outlets plus new AI videos, refreshed several times a day."
 FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23141a24'/%3E%3Ctext x='16' y='22' font-size='16' font-family='Georgia,serif' font-weight='700' text-anchor='middle' fill='%23fff'%3EAI%3C/text%3E%3C/svg%3E"
@@ -356,10 +367,12 @@ def render(items, videos=(), summary=""):
                     + (f'<p>{esc(it["summary"])}</p>' if it["summary"] else "") + "</div></li>")
     if day:
         body.append("</ol></section>")
+    body.append('<footer class="foot">Stock prices are provided by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a> '
+                'for general information only. They may be delayed and are not investment advice.</footer>')
     if not items:
         body.append("<p class='empty'>No stories could be loaded. The next scheduled update will try again.</p>")
     stamp = datetime.now(TZ).strftime("%B %-d, %-I:%M %p %Z")
-    return PAGE.replace("{{HEAD}}", head_html(items)).replace("{{STAMP}}", stamp).replace("{{COUNT}}", str(len(items))).replace("{{BODY}}", "\n".join(body))
+    return PAGE.replace("{{TAPE}}", json.dumps([{"proName": p, "description": d} for p, d in TICKER])).replace("{{HEAD}}", head_html(items)).replace("{{STAMP}}", stamp).replace("{{COUNT}}", str(len(items))).replace("{{BODY}}", "\n".join(body))
 
 
 PAGE = """<!doctype html>
@@ -401,6 +414,10 @@ p{margin:6px 0 0;color:var(--mute);font-size:15px;max-width:62ch}
 .vid:hover .t{color:var(--link);text-decoration:underline}
 .vid:focus-visible{outline:2px solid var(--link);outline-offset:4px;border-radius:6px}
 .media{position:relative}
+.tape{border-bottom:1px solid var(--line);background:var(--card);min-height:46px}
+.tape .tradingview-widget-container{width:100%}
+.foot{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--mute);font-size:12px;max-width:none}
+.foot a{color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .media iframe{width:100%;height:100%;border:0;display:block}
 .play{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(0,0,0,.65)}
@@ -422,7 +439,7 @@ section{max-width:780px}
 .empty{margin-top:32px}
 @media(max-width:820px){.hero{grid-template-columns:1fr}.grid,.vgrid{grid-template-columns:repeat(2,1fr)}li{grid-template-columns:160px 1fr}}
 @media(max-width:560px){main{padding:28px 16px 56px}header{margin-bottom:20px}.grid,.vgrid{grid-template-columns:1fr}.hero{gap:14px;margin-bottom:28px}.hero .t{font-size:26px}.vid .t{font-size:18px}.digest{padding:16px}.digest p{font-size:17px}li{grid-template-columns:104px 1fr;gap:12px;padding:14px 0}li .t{font-size:17px}li p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px}.ph{font-size:22px}.media .ico{width:40px;height:40px;margin:-20px 0 0 -20px;padding:6px}h2{margin-top:32px}}
-</style></head><body><main>
+</style></head><body><nav class="tape" id="tape" aria-label="AI and tech company stock prices" hidden></nav><main>
 <header><h1>AI News</h1>
 <p class="status">Updated {{STAMP}}. {{COUNT}} stories from the last few days. Refreshes twice a day.</p></header>
 {{BODY}}
@@ -430,6 +447,15 @@ section{max-width:780px}
 document.addEventListener("click",function(e){var a=e.target.closest("a.vid");if(!a)return;e.preventDefault();
 var m=a.querySelector(".media");if(window.gtag)gtag("event","video_play",{video_id:a.dataset.id});m.innerHTML='<iframe src="https://www.youtube-nocookie.com/embed/'+a.dataset.id+'?autoplay=1" title="Video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
 a.classList.remove("vid");a.removeAttribute("href");});
+</script>
+<script>
+window.addEventListener("load",function(){var t=document.getElementById("tape");if(!t)return;
+var dark=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches;
+var c=document.createElement("div");c.className="tradingview-widget-container";
+var w=document.createElement("div");w.className="tradingview-widget-container__widget";c.appendChild(w);
+var s=document.createElement("script");s.async=true;s.src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js";
+s.text=JSON.stringify({symbols:{{TAPE}},showSymbolLogo:true,colorTheme:dark?"dark":"light",isTransparent:true,displayMode:"adaptive",locale:"en"});
+c.appendChild(s);t.appendChild(c);t.hidden=false;});
 </script>
 </main></body></html>
 """
