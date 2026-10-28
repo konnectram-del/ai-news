@@ -1,7 +1,9 @@
 """Fetch AI news feeds and render a static site to docs/index.html."""
 import html, json, os, re, sys, urllib.request
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
 import feedparser
 
@@ -45,6 +47,41 @@ def find_image(e):
     blob = " ".join([e.get("summary") or ""] + [c.get("value", "") for c in e.get("content") or []])
     m = re.search(r"<img[^>]+src=[\"'](https://[^\"']+)", blob)
     return m.group(1) if m else ""
+
+
+META_TAG = re.compile(r"<meta\b[^>]*>", re.I)
+META_ATTR = re.compile(r"""([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+
+
+def og_image(url):
+    """Preview image (og:image / twitter:image) from a story's own page. Returns "" on any problem."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.9"})
+        page = urllib.request.urlopen(req, timeout=10).read(300000).decode("utf-8", "ignore")
+    except Exception:
+        return ""
+    found = {}
+    for tag in META_TAG.findall(page):
+        a = {k.lower(): (v1 or v2) for k, v1, v2 in META_ATTR.findall(tag)}
+        key = (a.get("property") or a.get("name") or "").lower()
+        if key in ("og:image", "og:image:url", "twitter:image", "twitter:image:src") and a.get("content"):
+            found.setdefault("og" if key.startswith("og:") else "tw", a["content"].strip())
+    raw = found.get("og") or found.get("tw") or ""
+    if not raw:
+        return ""
+    img = urljoin(url, html.unescape(raw))
+    return img if img.startswith("https://") else ""
+
+
+def fill_images(items, limit=40):
+    """For stories whose feed had no image, look up the preview image on the story page (parallel, capped)."""
+    todo = [i for i in items if not i["image"]][:limit]
+    if not todo:
+        return
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for it, img in zip(todo, ex.map(lambda i: og_image(i["link"]), todo)):
+            it["image"] = img
+    print(f"images: found {sum(1 for i in todo if i['image'])} of {len(todo)} missing via page previews", file=sys.stderr)
 
 
 def fetch():
@@ -343,7 +380,7 @@ h1{font:700 clamp(40px,9vw,72px)/1 "Iowan Old Style",Palatino,Georgia,serif;lett
 .t:hover{color:var(--link);text-decoration:underline}
 .t:focus-visible{outline:2px solid var(--link);outline-offset:3px}
 p{margin:6px 0 0;color:var(--mute);font-size:15px;max-width:62ch}
-.media{display:block;aspect-ratio:16/9;background:var(--ph);overflow:hidden;border-radius:6px}
+.media{display:block;aspect-ratio:16/9;background:var(--ph);overflow:hidden;border-radius:6px;text-decoration:none;color:var(--mute)}
 .media img{width:100%;height:100%;object-fit:cover;display:block}
 .txt{display:flex;flex-direction:column;gap:6px;padding-top:12px}
 .hero{display:grid;grid-template-columns:1.4fr 1fr;gap:28px;align-items:center;margin-bottom:36px}
@@ -391,7 +428,9 @@ a.classList.remove("vid");a.removeAttribute("href");});
 if __name__ == "__main__":
     out = Path(__file__).parent / "docs"
     out.mkdir(exist_ok=True)
-    (out / "index.html").write_text((lambda items: render(items, fetch_videos(), summarize(items)))(fetch()), encoding="utf-8")
+    items = fetch()
+    fill_images(items)
+    (out / "index.html").write_text(render(items, fetch_videos(), summarize(items)), encoding="utf-8")
     write_seo_files(out)
     print(f"site url: {SITE_URL} ({'from SITE_URL variable' if os.environ.get('SITE_URL') else 'DEFAULT: SITE_URL variable not received'})", file=sys.stderr)
     print("wrote", out / "index.html")
