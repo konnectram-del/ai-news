@@ -209,7 +209,7 @@ def watch_html(videos, limit=6):
         group = [v for v in videos if v["lang"] == lang][:limit]
         title = "AI videos from top influencers" if len(langs) == 1 else f"AI videos from top influencers: {lang}"
         tiles = "".join(
-            f'<a class="vid" href="https://www.youtube.com/watch?v={v["id"]}" data-id="{v["id"]}" rel="noopener">'
+            f'<a class="vid" href="https://www.youtube.com/watch?v={v["id"]}" data-id="{v["id"]}" target="_blank" rel="noopener">'
             f'<span class="media"><img src="https://i.ytimg.com/vi/{v["id"]}/hqdefault.jpg" alt="" loading="lazy" decoding="async" '
             f'referrerpolicy="no-referrer"><span class="play" aria-hidden="true"></span></span>'
             f'<span class="txt"><span class="meta"><span class="src">{html.escape(v["channel"])}</span>'
@@ -316,8 +316,8 @@ def meta(it):
 def card(it, cls):
     esc = html.escape
     summ = f'<p>{esc(it["summary"])}</p>' if it["summary"] else ""
-    return (f'<article class="{cls}"><a class="media" href="{esc(it["link"])}" rel="noopener" tabindex="-1" aria-hidden="true">{img_tag(it)}</a>'
-            f'<div class="txt">{meta(it)}<a class="t" href="{esc(it["link"])}" rel="noopener">{esc(it["title"])}</a>{summ}</div></article>')
+    return (f'<article class="{cls}"><a class="media" href="{esc(it["link"])}" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">{img_tag(it)}</a>'
+            f'<div class="txt">{meta(it)}<a class="t" href="{esc(it["link"])}" target="_blank" rel="noopener">{esc(it["title"])}<span class="sr"> (opens in a new tab)</span></a>{summ}</div></article>')
 
 
 def day_label(d, today):
@@ -351,8 +351,8 @@ def render(items, videos=(), summary=""):
                 body.append("</ol></section>")
             day = d
             body.append(f'<section><h2>{day_label(d, today)}</h2><ol>')
-        body.append(f'<li><a class="media" href="{esc(it["link"])}" rel="noopener" tabindex="-1" aria-hidden="true">{img_tag(it)}</a>'
-                    f'<div class="body">{meta(it)}<a class="t" href="{esc(it["link"])}" rel="noopener">{esc(it["title"])}</a>'
+        body.append(f'<li><a class="media" href="{esc(it["link"])}" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">{img_tag(it)}</a>'
+                    f'<div class="body">{meta(it)}<a class="t" href="{esc(it["link"])}" target="_blank" rel="noopener">{esc(it["title"])}<span class="sr"> (opens in a new tab)</span></a>'
                     + (f'<p>{esc(it["summary"])}</p>' if it["summary"] else "") + "</div></li>")
     if day:
         body.append("</ol></section>")
@@ -401,6 +401,7 @@ p{margin:6px 0 0;color:var(--mute);font-size:15px;max-width:62ch}
 .vid:hover .t{color:var(--link);text-decoration:underline}
 .vid:focus-visible{outline:2px solid var(--link);outline-offset:4px;border-radius:6px}
 .media{position:relative}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .media iframe{width:100%;height:100%;border:0;display:block}
 .play{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(0,0,0,.65)}
 .play::after{content:"";position:absolute;left:26px;top:19px;border-left:20px solid #fff;border-top:13px solid transparent;border-bottom:13px solid transparent}
