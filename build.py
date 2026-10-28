@@ -3,7 +3,7 @@ import html, json, os, re, sys, urllib.request
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 import feedparser
 
@@ -81,7 +81,11 @@ def fill_images(items, limit=40):
     with ThreadPoolExecutor(max_workers=8) as ex:
         for it, img in zip(todo, ex.map(lambda i: og_image(i["link"]), todo)):
             it["image"] = img
-    print(f"images: found {sum(1 for i in todo if i['image'])} of {len(todo)} missing via page previews", file=sys.stderr)
+    stats = {}
+    for i in todo:
+        got, tot = stats.get(i["source"], (0, 0))
+        stats[i["source"]] = (got + bool(i["image"]), tot + 1)
+    print("images via page previews: " + ", ".join(f"{k} {g}/{t}" for k, (g, t) in sorted(stats.items())), file=sys.stderr)
 
 
 def fetch():
@@ -296,7 +300,10 @@ def write_seo_files(out):
 
 def img_tag(it):
     if not it["image"]:
-        return f'<span class="ph" aria-hidden="true">{html.escape(it["source"][:1].upper())}</span>'
+        host = html.escape(urlparse(it["link"]).netloc)
+        return (f'<span class="ph" aria-hidden="true"><span class="ltr">{html.escape(it["source"][:1].upper())}</span>'
+                f'<img class="ico" src="https://www.google.com/s2/favicons?domain={host}&amp;sz=128" alt="" loading="lazy" '
+                f'referrerpolicy="no-referrer" onerror="this.remove()"></span>')
     return (f'<img src="{html.escape(it["image"])}" alt="" loading="lazy" decoding="async" '
             f'referrerpolicy="no-referrer" onerror="this.remove()">')
 
@@ -408,11 +415,12 @@ ol{list-style:none;margin:0;padding:0}
 li{display:grid;grid-template-columns:200px 1fr;gap:18px;padding:16px 0;border-bottom:1px solid var(--line);align-items:start}
 .body{display:flex;flex-direction:column;gap:4px}
 .body p{margin:2px 0 0}
-.ph{display:flex;align-items:center;justify-content:center;height:100%;font:700 28px/1 Georgia,serif;color:var(--mute)}
+.ph{position:relative;display:flex;align-items:center;justify-content:center;height:100%;font:700 28px/1 Georgia,serif;color:var(--mute)}
+.media .ico{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;object-fit:contain;padding:8px;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 section{max-width:780px}
 .empty{margin-top:32px}
 @media(max-width:820px){.hero{grid-template-columns:1fr}.grid,.vgrid{grid-template-columns:repeat(2,1fr)}li{grid-template-columns:160px 1fr}}
-@media(max-width:560px){main{padding:28px 16px 56px}header{margin-bottom:20px}.grid,.vgrid{grid-template-columns:1fr}.hero{gap:14px;margin-bottom:28px}.hero .t{font-size:26px}.vid .t{font-size:18px}.digest{padding:16px}.digest p{font-size:17px}li{grid-template-columns:104px 1fr;gap:12px;padding:14px 0}li .t{font-size:17px}li p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px}.ph{font-size:22px}h2{margin-top:32px}}
+@media(max-width:560px){main{padding:28px 16px 56px}header{margin-bottom:20px}.grid,.vgrid{grid-template-columns:1fr}.hero{gap:14px;margin-bottom:28px}.hero .t{font-size:26px}.vid .t{font-size:18px}.digest{padding:16px}.digest p{font-size:17px}li{grid-template-columns:104px 1fr;gap:12px;padding:14px 0}li .t{font-size:17px}li p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px}.ph{font-size:22px}.media .ico{width:40px;height:40px;margin:-20px 0 0 -20px;padding:6px}h2{margin-top:32px}}
 </style></head><body><main>
 <header><h1>AI News</h1>
 <p class="status">Updated {{STAMP}}. {{COUNT}} stories from the last few days. Refreshes twice a day.</p></header>
